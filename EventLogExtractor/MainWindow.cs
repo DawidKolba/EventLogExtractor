@@ -11,16 +11,17 @@ namespace EventLogExtractor
         private static readonly object ThisLock = new object();
 
         private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+
         public MainWindow()
         {
             InitializeComponent();
 
             startEventsDateTimePicker.Format = DateTimePickerFormat.Custom;
-            startEventsDateTimePicker.CustomFormat = "yyyy-MM-dd HH:mm";
+            startEventsDateTimePicker.CustomFormat = GlobalExtractorOptions.DateTimeFormat;
             startEventsDateTimePicker.Value = DateTime.Now.AddDays(-1);
 
             EndEventsDateTimePicker.Format = DateTimePickerFormat.Custom;
-            EndEventsDateTimePicker.CustomFormat = "yyyy-MM-dd HH:mm";
+            EndEventsDateTimePicker.CustomFormat = GlobalExtractorOptions.DateTimeFormat;
             EndEventsDateTimePicker.Value = DateTime.Now;
 
             try
@@ -44,34 +45,47 @@ namespace EventLogExtractor
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Problem during trying to handle event", ex);
+                _logger.Error(ex, "Problem during trying to handle event");
             }
         }
 
-        bool ChceckCheckboxState(CheckBox checkBox)
+        private void InvokeIfRequired(Control control, Action action)
+        {
+            if (control.InvokeRequired)
+            {
+                control.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
+        }
+
+        private void ChangeButtonState(bool enabled, Button button)
+        {
+            InvokeIfRequired(button, () => button.Enabled = enabled);
+        }
+
+        private bool CheckCheckboxState(CheckBox checkBox)
         {
             bool output = false;
-            if (checkBox.InvokeRequired)
-                checkBox.Invoke((MethodInvoker)delegate () { output = checkBox.Checked; });
-            else
-                output = checkBox.Checked;
-
+            InvokeIfRequired(checkBox, () => output = checkBox.Checked);
             return output;
         }
 
-        void UpdateCurrentState(ExtractorState state)
+        private void UpdateCurrentState(ExtractorState state)
         {
             try
             {
                 var builder = new StringBuilder();
                 if (state.CurrentWorkingState == PossibleExtractorStates.Done)
                 {
-                    builder.AppendLine($"All logs grabbed");
-                    changeButtonState(true, this.startButton);
+                    builder.AppendLine($"All logs collected");
+                    ChangeButtonState(true, this.startButton);
 
                     lock (ThisLock)
                     {
-                        if (ChceckCheckboxState(this.openLogsDirectoryAtEndCheckbox))
+                        if (CheckCheckboxState(this.openLogsDirectoryAtEndCheckbox))
                             WindowsHelper.OpenOutputDirectory();
                     }
                 }
@@ -96,21 +110,13 @@ namespace EventLogExtractor
             }
         }
 
-        private void changeButtonState(bool enabled, Button button)
-        {
-            if (button.InvokeRequired)
-                button.BeginInvoke((MethodInvoker)delegate () { button.Enabled = enabled; });
-            else
-                button.Enabled = enabled;
-        }
-
-        bool CheckForm()
+        private bool CheckForm()
         {
             try
             {
                 if (startEventsDateTimePicker.Value > EndEventsDateTimePicker.Value)
                 {
-                    string msg = $"Starting date and time is greater than ending";
+                    string msg = $"Start checking if date and time are greater than ending";
                     _logger.Error(msg);
                     this.OutputWindow.Text = msg;
                     WindowsHelper.DisplayErrorMessage(msg);
@@ -128,6 +134,14 @@ namespace EventLogExtractor
             }
         }
 
+        private async Task StartLogExtractionAsync()
+        {
+            using (EventViewerExtractor cmdProcess = new EventViewerExtractor())
+            {
+                cmdProcess.OnStateChangedMessage += new ReceivedMessageEventHandler(HandleOnReceivedMessage);
+                await cmdProcess.GetLogsAsync(startEventsDateTimePicker.Value, EndEventsDateTimePicker.Value);
+            }
+        }
 
         private void startButton_Click(object sender, EventArgs e)
         {
@@ -135,16 +149,44 @@ namespace EventLogExtractor
                 return;
 
             startButton.Enabled = false;
-            OutputWindow.Text = "Preparing to grabb logs from Event Viewer. Please wait...";
-            Task.Factory.StartNew(() =>
-            {
-                using (EventViewerExtractor cmdProcess = new EventViewerExtractor())
-                {
-                    cmdProcess.OnStateChangedMessage += new ReceivedMessageEventHandler(HandleOnReceivedMessage);
-                    cmdProcess.GetLogs(startEventsDateTimePicker.Value, EndEventsDateTimePicker.Value);
-                }
-            });
+            OutputWindow.Text = "Preparing to get logs from Event Viewer. Please wait...";
+            Task.Run(async () => await StartLogExtractionAsync());
         }
 
+        private void _15_min_btn_Click(object sender, EventArgs e)
+        {
+            startEventsDateTimePicker.Value = DateTime.Now.AddMinutes(-15);
+            EndEventsDateTimePicker.Value = DateTime.Now;
+        }
+
+        private void _30_min_btn_Click(object sender, EventArgs e)
+        {
+            startEventsDateTimePicker.Value = DateTime.Now.AddMinutes(-30);
+            EndEventsDateTimePicker.Value = DateTime.Now;
+        }
+
+        private void _1_h_btn_Click(object sender, EventArgs e)
+        {
+            startEventsDateTimePicker.Value = DateTime.Now.AddHours(-1);
+            EndEventsDateTimePicker.Value = DateTime.Now;
+        }
+
+        private void _3_h_btn_Click(object sender, EventArgs e)
+        {
+            startEventsDateTimePicker.Value = DateTime.Now.AddHours(-3);
+            EndEventsDateTimePicker.Value = DateTime.Now;
+        }
+
+        private void _6_h_btn_Click(object sender, EventArgs e)
+        {
+            startEventsDateTimePicker.Value = DateTime.Now.AddHours(-6);
+            EndEventsDateTimePicker.Value = DateTime.Now;
+        }
+
+        private void _24_h_btn_Click(object sender, EventArgs e)
+        {
+            startEventsDateTimePicker.Value = DateTime.Now.AddHours(-24);
+            EndEventsDateTimePicker.Value = DateTime.Now;
+        }
     }
 }
